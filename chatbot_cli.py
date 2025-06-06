@@ -11,17 +11,22 @@ class ChatbotClient:
         load_dotenv()
         API_KEY = os.getenv("API_KEY")
         self.greeting = greeting
-        self.chunks = []
-        self.embeddings_for_chunks = []
         self.chunks_similarity = []
         self.client = genai.Client(api_key=API_KEY)
+        self.chat = self.client.chats.create(model="gemini-2.0-flash-lite")
+        self.history = []
         self.vector_db = vector_db
     
     def get_response(self, user_question):
+        # Rewrite user query
+        rewriten_query = self.rewrite_query(user_question)
+        print(f"Query before: {user_question}")
+        print(f"Query after rewriting: {rewriten_query}")
+
         # Embedd user question
         result = self.client.models.embed_content(
                     model="text-embedding-004",
-                    contents=[user_question],
+                    contents=[rewriten_query],
                     config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY")
             )
         [user_question_embedding] = result.embeddings
@@ -47,10 +52,43 @@ class ChatbotClient:
         """
 
         # Get response from model
-        response = self.client.models.generate_content(
-            model="gemini-2.0-flash",
+        response = self.chat.send_message(
             config=types.GenerateContentConfig(
-                system_instruction=system_prompt),
+                system_instruction=system_prompt,
+                temperature=0.1
+            ),
+            message=prompt
+        )
+
+        # Update conversation history
+        self.history = self.chat.get_history()
+
+        return response.text.strip()
+
+    def rewrite_query(self, user_question):
+        rewriting_system_prompt = """
+            You are a query rewriter. Your task is to rewrite the provided user question 
+            into a standalone question that is clear and understandable on its own, using 
+            information from the conversation history when necessary. If the user question 
+            is already standalone, return it as is. Only return the rewritten question.
+            For example if question was "How much?" and history mentioned buying a car 
+            you will convert it to "How much does the car cost?"
+        """
+
+        prompt = f"""
+            User question: 
+            {user_question}
+
+            Conversation history:
+            {self.history}
+        """
+
+        response = self.client.models.generate_content(
+            model="gemini-2.0-flash-lite",
+            config=types.GenerateContentConfig(
+                system_instruction=rewriting_system_prompt,
+                temperature=0.2
+            ),
             contents=prompt
         )
 
@@ -92,6 +130,7 @@ def main():
             for idx, chu in enumerate(chatbot.best_chunks):
                 print(f"Chunk {idx+1}: ")
                 print(chu)
+        
 
 if __name__ == '__main__':
     main()
