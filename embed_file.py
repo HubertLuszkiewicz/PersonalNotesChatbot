@@ -26,22 +26,34 @@ def get_embeddings_for_chunks(chunks):
     client = genai.Client(api_key=API_KEY)
 
     embeddings = []
-    for chunk in chunks:
+    num_chunks = len(chunks)
+    chunks_per_request = 6
+    num_iterations = (num_chunks+chunks_per_request-1) // chunks_per_request
+    
+    for i in range(num_iterations):
+        chunks_group = chunks[i:i+chunks_per_request]
+
+        print("Sending request to embedding model...")
         result = client.models.embed_content(
-                model="text-embedding-004",
-                contents=[chunk],
-                config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY")
+                model="gemini-embedding-001",
+                contents=chunks_group,
+                config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY", output_dimensionality=768)
         )
-        [embedding] = result.embeddings
-        embeddings.append(embedding.values)
+        group_embeddings = result.embeddings
+        for emb in group_embeddings:
+            embeddings.append(emb.values)
+        print("Request processed...")
     
     return embeddings
 
 
 def main():
     file_path = sys.argv[1]
-    chunk_size = int(sys.argv[2])
-    overlap = int(sys.argv[3])
+    # chunk_size = int(sys.argv[2])
+
+    chunk_size = 1000
+    overlap = 0
+    # overlap = int(sys.argv[3])
 
     print(f"File to embed: {file_path}")
 
